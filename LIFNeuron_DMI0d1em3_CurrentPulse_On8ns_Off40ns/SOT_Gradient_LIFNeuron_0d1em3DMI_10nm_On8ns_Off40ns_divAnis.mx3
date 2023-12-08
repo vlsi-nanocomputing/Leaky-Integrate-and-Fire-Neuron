@@ -1,0 +1,194 @@
+//Dimension of the material and its discretization 
+Nx := 850
+Ny := 40
+Nz := 1
+setGridSize(Nx, Ny, Nz)
+setCellSize(1e-9, 1e-9, 1e-9)
+//Period Boundary Condition (PBC). PBC must be canceled out to evaluate the position, the speed, and the tilting angle of the Domain Wall through ext_dwpos, ext_dwspeed, ext_dwtilt respectively 
+//setPBC(4,0,0)
+//Tilting angle of anisotropy vector 
+angle := 0.05 //between 0.01 and 1 rad
+py := 0
+pz := 1
+
+//Parameters
+Msat = 1e6 //Saturation Magnetization
+Aex = 10e-12 // Exchange stiffness interaction
+anisU = vector(0, py, pz) //Anisotropy Vector
+alpha = 0.02 //max = 0.04 min = 0.015, Damping factor
+Xi = 0.2 //Non-adiabatic parameter
+pol = 1 //Current Polarization
+Dind = 0.1e-3 //DMI interaction J m2
+Minx := -Nx/2 + 25 //Min X offset for starting Anisotropy Gradient
+
+//Anisotropy gradient definition
+Min_Ku1 := 0.8e6 //Minumum Anisotropy constant
+Max_Ku1 := 1.6e6 //Maximum Anisotropy constant
+numregions := (Nx-50)/10
+Delta_Ku := (Max_Ku1-Min_Ku1)/numregions
+
+First_Reg := xrange(-425e-9,-400e-9)
+Second_Reg := xrange(400e-9,425e-9)
+
+defregion(1, First_Reg) 
+defregion(2, Second_Reg)
+
+ku1.setregion(2, Min_Ku1) // Set minimum anisotropy left part of the track
+ku1.setregion(1, Max_Ku1) // Set maxium anisotropy right part of the track
+
+count := 3;
+for i:=0; i<numregions; i+=1 {
+defregion(i+3, xrange((Minx+i*10)*1e-9, (Minx+(i+1)*10)*1e-9))
+ku1.setregion(i+3, Max_Ku1 - Delta_Ku*i)
+count = count +  1;
+print("Count", count)
+print("Region low Border=", (Minx+i*10)*1e-9, "Region up Border=", (Minx+(i+1)*10)*1e-9)
+}
+snapshot(regions)
+
+//Magnetization Domain Definition
+m = twoDomain(0,0,1, 0,1,0, 0,0, -1).transl((Nx/2-25)*1e-9,0,0)
+relax() //Energy Minimization
+Snapshot(m)
+
+
+// Schedule output
+autosave(m, 1e-9) //Magnetization autosave
+
+for i:=0; i<Nx; i++ {
+    tableadd(crop(m.comp(2), i, (i+1),Ny/2, Ny/2+1 ,0,1))
+}
+tableautosave(0.5e-9)
+
+J_SOT := abs(-0.0e11)
+
+RunTime_On := 8e-9
+RunTime_Off := 40e-9
+
+//Define constants for SOT
+AlphaH := 0.15 //Parameter of the Damping like SOT
+e := 1.6021766e-19 //Electron charge
+d := 1e-9 //oxide thickness
+Ms := 1e6 //Saturation Magnetization
+hbar := 1.0545718e-34 //Reduced Planck constant
+zi := ConstVector(0, 1, 0) //Direction Perpendicular to the Spin Current and to the Underlayer Current
+SOTxi := -2.0 //Ratio between Field Like SOT and Damping SOT 
+
+//First Current Pulse
+J_SOT = abs(7e11) //Underlayer Current
+print("Current ON...")
+print("J = ", J_SOT, " for ", 5, "ns")
+
+//Define Damping Like SOT and Field Like SOT prefactors
+aj := Const(J_SOT*(hbar/2.*alphaH/e/d/Ms)) //Damping Like factor 
+bj := Mul(aj,Const(SOTxi)) //Field Like Factor
+
+//Add damping-like SOT term
+dampinglike := Mul(aj, Cross(m,zi)) 
+AddFieldTerm(dampinglike) 
+AddEdensTerm(Mul(Const(-0.5),Dot(dampinglike,M_full)))
+
+//Add field-like SOT term
+fieldlike := Mul(bj,zi)
+AddFieldTerm(fieldlike) 
+AddEdensTerm(Mul(Const(-0.5),Dot(fieldlike,M_full)))
+
+Run(RunTime_On)
+
+//First Off Period
+//Remove all the customized field previously created
+RemoveCustomFields()
+J_SOT = abs(-0.0e11)
+print("Current OFF...")
+print("J = ", J_SOT, " for ", 20, "ns")
+Run(RunTime_Off)
+
+//Second Current Pulse
+J_SOT = abs(-7.0e11) //Underlayer Current
+print("Current ON...")
+print("J = ", J_SOT, " for ", 5, "ns")
+
+//Define Damping Like SOT and Field Like SOT prefactors
+aj = Const(J_SOT*(hbar/2.*alphaH/e/d/Ms)) //Damping Like factor 
+bj = Mul(aj,Const(SOTxi)) //Field Like Factor
+
+//Add damping-like SOT term
+dampinglike1 := Mul(aj, Cross(m,zi)) 
+AddFieldTerm(dampinglike1) 
+AddEdensTerm(Mul(Const(-0.5),Dot(dampinglike1,M_full)))
+
+//Add field-like SOT term
+fieldlike = Mul(bj,zi)
+AddFieldTerm(fieldlike) 
+AddEdensTerm(Mul(Const(-0.5),Dot(fieldlike,M_full)))
+
+Run(RunTime_On)
+
+//Second Off Period
+//Remove all the customized field previously created
+RemoveCustomFields()
+J_SOT = abs(-0.0e11)
+print("Current OFF...")
+print("J = ", J_SOT, " for ", 10, "ns")
+Run(RunTime_Off)
+
+
+//Third Current Pulse
+J_SOT = abs(7e11) //Underlayer Current
+print("Current ON...")
+print("J = ", J_SOT, " for ", 5, "ns")
+
+//Define Damping Like SOT and Field Like SOT prefactors
+aj = Const(J_SOT*(hbar/2.*alphaH/e/d/Ms)) //Damping Like factor 
+bj = Mul(aj,Const(SOTxi)) //Field Like Factor
+
+//Add damping-like SOT term
+dampinglike = Mul(aj, Cross(m,zi)) 
+AddFieldTerm(dampinglike) 
+AddEdensTerm(Mul(Const(-0.5),Dot(dampinglike,M_full)))
+
+//Add field-like SOT term
+fieldlike = Mul(bj,zi)
+AddFieldTerm(fieldlike) 
+AddEdensTerm(Mul(Const(-0.5),Dot(fieldlike,M_full)))
+
+Run(RunTime_On)
+
+//Third OFF period
+//Remove all the customized field previously created
+RemoveCustomFields()
+J_SOT = abs(-0.0e11)
+print("Current OFF...")
+print("J = ", J_SOT, " for ", 5, "ns")
+Run(RunTime_Off)
+
+
+//Fourth Current Pulse
+J_SOT = abs(7e11) //Underlayer Current
+print("Current ON...")
+print("J = ", J_SOT, " for ", 5, "ns")
+
+//Define Damping Like SOT and Field Like SOT prefactors
+aj = Const(J_SOT*(hbar/2.*alphaH/e/d/Ms)) //Damping Like factor 
+bj = Mul(aj,Const(SOTxi)) //Field Like Factor
+
+//Add damping-like SOT term
+dampinglike = Mul(aj, Cross(m,zi)) 
+AddFieldTerm(dampinglike) 
+AddEdensTerm(Mul(Const(-0.5),Dot(dampinglike,M_full)))
+
+//Add field-like SOT term
+fieldlike = Mul(bj,zi)
+AddFieldTerm(fieldlike) 
+AddEdensTerm(Mul(Const(-0.5),Dot(fieldlike,M_full)))
+
+Run(RunTime_On)
+
+//Fourth OFF period
+//Remove all the customized field previously created
+RemoveCustomFields()
+J_SOT = abs(-0.0e11)
+print("Current OFF...")
+print("J = ", J_SOT, " for ", 5, "ns")
+Run(RunTime_Off)
+

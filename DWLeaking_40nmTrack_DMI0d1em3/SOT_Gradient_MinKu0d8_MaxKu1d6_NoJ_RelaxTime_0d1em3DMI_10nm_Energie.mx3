@@ -1,0 +1,81 @@
+//Dimension of the material and its discretization 
+Nx := 850
+Ny := 40
+Nz := 1
+setGridSize(Nx, Ny, Nz)
+setCellSize(1e-9, 1e-9, 1e-9)
+//Period Boundary Condition (PBC). PBC must be canceled out to evaluate the position, the speed, and the tilting angle of the Domain Wall through ext_dwpos, ext_dwspeed, ext_dwtilt respectively 
+//setPBC(4,0,0)
+//Tilting angle of anisotropy vector 
+angle := 0.05 //between 0.01 and 1 rad
+py := 0
+pz := 1
+
+//Parameters
+Msat = 1e6 //Saturation Magnetization
+Aex = 10e-12 // Exchange stiffness interaction
+anisU = vector(0, py, pz) //Anisotropy Vector
+alpha = 0.02 //max = 0.04 min = 0.015, Damping factor
+Xi = 0.2 //Non-adiabatic parameter
+pol = 1 //Current Polarization
+Dind = 0.1e-3 //DMI interaction J m3
+Minx := -Nx/2 + 25 //Min X offset for starting Anisotropy Gradient
+
+//Anisotropy gradient definition
+Min_Ku1 := 0.8e6 //Minumum Anisotropy constant
+Max_Ku1 := 1.6e6 //Maximum Anisotropy constant
+numregions := (Nx-50)/10
+Delta_Ku := (Max_Ku1-Min_Ku1)/numregions
+
+First_Reg := xrange(-425e-9,-400e-9)
+Second_Reg := xrange(400e-9,425e-9)
+
+defregion(1, First_Reg) 
+defregion(2, Second_Reg)
+
+ku1.setregion(2, Min_Ku1) // Set minimum anisotropy left part of the track
+ku1.setregion(1, Max_Ku1) // Set maxium anisotropy right part of the track
+
+count := 3;
+for i:=0; i<numregions; i+=1 {
+defregion(i+3, xrange((Minx+i*10)*1e-9, (Minx+(i+1)*10)*1e-9))
+ku1.setregion(i+3, Max_Ku1 - Delta_Ku*i)
+count = count +  1;
+print("Count", count)
+print("Region low Border=", (Minx+i*10)*1e-9, "Region up Border=", (Minx+(i+1)*10)*1e-9)
+}
+snapshot(regions)
+
+//Magnetization Domain Definition
+m = twoDomain(0,0,1, 0,1,0, 0,0, -1).transl(-(Nx/2-25)*1e-9,0,0)
+relax() //Energy Minimization
+Snapshot(m)
+
+
+// Schedule output
+autosave(m, 1e-9) //Magnetization autosave
+tableadd(E_anis)
+tableadd(E_custom) 
+tableadd(E_demag) 
+tableadd(E_exch) 
+tableadd(E_mel)
+tableadd(E_therm)
+tableadd(E_total)
+tableadd(E_Zeeman)
+
+tableadd(Edens_anis)
+tableadd(Edens_custom) 
+tableadd(Edens_demag) 
+tableadd(Edens_exch) 
+tableadd(Edens_mel)
+tableadd(Edens_therm)
+tableadd(Edens_total)
+tableadd(Edens_Zeeman)
+//tableautosave(10e-12) //Really dense autosaving to have good fitting of the DW Tilting Angle
+
+//for i:=0; i<Nx; i++ {
+//    tableadd(crop(m.comp(2), i, (i+1),Ny/2, Ny/2+1 ,0,1))
+//}
+tableautosave(0.5e-9)
+
+Run(300e-9)
