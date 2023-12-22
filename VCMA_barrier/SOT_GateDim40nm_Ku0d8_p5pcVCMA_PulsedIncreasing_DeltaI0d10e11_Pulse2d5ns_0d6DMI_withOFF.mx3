@@ -1,0 +1,101 @@
+//Dimension of the material and its discretization 
+Nx := 768
+Ny := 40
+Nz := 1
+setGridSize(Nx, Ny, Nz)
+setCellSize(1e-9, 1e-9, 1e-9)
+//Period Boundary Condition (PBC). PBC must be canceled out to evaluate the position, the speed, and the tilting angle of the Domain Wall through ext_dwpos, ext_dwspeed, ext_dwtilt respectively 
+//setPBC(4,0,0)
+//Tilting angle of anisotropy vector 
+angle := 0.05 //between 0.01 and 1 rad
+py := sin(angle * pi/180)
+pz := cos(angle * pi/180)
+
+//Parameters
+Msat = 1e6 //Saturation Magnetization
+Aex = 10e-12 // Exchange stiffness interaction
+anisU = vector(0, py, pz) //Anisotropy Vector
+Ku1 = 0.8e6 //Anisotropy constant
+alpha = 0.02 //max = 0.04 min = 0.015, Damping factor
+Xi = 0.2 //Non-adiabatic parameter
+pol = 1 //Current Polarization
+Dind = 0.6e-3 //DMI interaction J m3
+w :=40e-9 //VCMA gate width
+n := 1 //Number of Domain Walls in the piece of material
+p :=-Nx*1e-9/2+Nx*1e-9/(2*n) //Parameter necessary for the evaluation of the magnetization domains and for the VCMA gate position
+
+//Magnetization Domain Definition
+for i := n; i>0; i-=1 {
+defregion(i, rect(Nx*1e-9/n,Ny*1e-9).transl(p+(n-i)*(Nx*1e-9/n),0,0)) 
+m.setRegion(i, twoDomain(0,0,-pow(-1,i), 0,-pow(-1,i),0, 0,0, pow(-1,i)).transl(p+(n-i)*(Nx*1e-9/n),0,0)) }
+minimize() //Energy Minimization
+
+//Define constants for SOT
+AlphaH := 0.15 //Parameter of the Damping like SOT
+e := 1.6021766e-19 //Electron charge
+d := 1e-9 //oxide thickness
+Ms := 1e6 //Saturation Magnetization
+hbar := 1.0545718e-34 //Reduced Planck constant
+zi := ConstVector(0, 1, 0) //Direction Perpendicular to the Spin Current and to the Underlayer Current
+SOTxi := -2.0 //Ratio between Field Like SOT and Damping SOT 
+
+//Region of different anisotropy definition
+for k := n; k>0; k-=1 {
+    defregion(n+k, rect(w,Ny*1e-9).transl(p+(n-k)*(Nx*1e-9/n)- 55e-9,0,0))  
+    Ku1.setRegion(n+k,1.05*Ku1.GetRegion(0))
+}
+ext_centerWall(2) //Centering of the simulation window to evaluate position, speed and tilting angle of the DW
+
+J_SOT := abs(-0.0e11) //Starting Underlayer Current
+Run_Time := 2.5e-9 //Pulse Duration
+
+// Schedule output
+//autosave(m, 10e-11) //Magnetization autosave
+tableadd(ext_dwpos) //Domain Wall Position
+tableadd(ext_dwspeed)
+tableadd(E_anis)
+tableadd(E_custom) 
+tableadd(E_demag) 
+tableadd(E_exch) 
+tableadd(E_mel)
+tableadd(E_therm)
+tableadd(E_total)
+tableadd(E_Zeeman)
+tableautosave(0.1e-9) //Really dense autosaving to have good fitting of the DW Tilting Angle
+
+print("Applying a pulsed current...")
+for k := 1; k<13; k+=1 {
+    //Current update
+    J_SOT += abs(-0.10e11) //Underlayer Current
+    print("Applying current...")
+    step_time_start := now()
+    print("J = ", J_SOT, " for ", Run_Time*1e9, "ns")
+
+    //Define Damping Like SOT and Field Like SOT prefactors
+    aj := Const(J_SOT*(hbar/2.*alphaH/e/d/Ms)) //Damping Like factor 
+    bj := Mul(aj,Const(SOTxi)) //Field Like Factor
+
+    //Remove all the customized field previously created
+    RemoveCustomFields()
+
+    //Add damping-like SOT term
+    dampinglike := Mul(aj, Cross(m,zi)) 
+    AddFieldTerm(dampinglike) 
+    AddEdensTerm(Mul(Const(-0.5),Dot(dampinglike,M_full)))
+
+    //Add field-like SOT term
+    fieldlike := Mul(bj,zi)
+    AddFieldTerm(fieldlike) 
+    AddEdensTerm(Mul(Const(-0.5),Dot(fieldlike,M_full)))
+
+    // Run for 8ns with current through the sample 
+    run(Run_Time)
+
+    // OFF Cycle
+    //Remove all the customized field previously created
+    RemoveCustomFields()
+    run(1e-9)
+
+    step_time_end := now()
+    print("Enlapsed running time: ", step_time_end.sub(step_time_start))
+}
