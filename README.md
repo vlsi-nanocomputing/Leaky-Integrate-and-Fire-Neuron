@@ -1,6 +1,6 @@
 [![DOI](https://zenodo.org/badge/729286203.svg)](https://zenodo.org/doi/10.5281/zenodo.10308175)
 
-# supplementary material regarding the article entitled "DMI Influence on the Integration, Leakage and Threshold Property of Domain Wall based Neurons".
+# Supplementary material regarding the article entitled "DMI Influence on the Integration, Leakage and Threshold Property of Domain Wall based Neurons".
 
 In particular:
 
